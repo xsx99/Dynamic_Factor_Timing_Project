@@ -48,12 +48,12 @@ def summary_stats(p_ret, p_cumret, b_ret, rf_ret):
 
 ###inputs: weights is a matrix, row: end of period date, col: asset weight
 ###inputs: data is a dataframe, row: end of period date, col: asset return 
-def portfolio(data,weights,legend):    
-    p0 = 1 * weights[0]/np.sum(weights[0]) # initial dollar value 
+def portfolio(data,weights,legend): 
+    p0 = 1.00 * weights[0]/float(np.sum(weights[0])) # initial dollar value 
     p_sum = [1]
     for i in range(1,len(data)):
         # monthly return less holding costs
-        weight = weights[i] * 1/np.sum(weights[i])
+        weight = weights[i] * 1.00/float(np.sum(weights[i]))
         p1 = p0 * np.exp(data.ix[i] - holding_costs)
         diff = np.abs(p1 - weight * np.sum(p1))
         p1 = weight * (np.sum(p1) - np.dot(diff, trading_costs))
@@ -65,9 +65,12 @@ def portfolio(data,weights,legend):
     p_ret = p_sum.diff()/p_sum.shift(1)
     p_ret=p_ret[1:]    
     plt.plot(pd.to_datetime(data.index), p_sum, label=legend)
+    plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
     #plt.plot(pd.to_datetime(data.index)[1:], p_ret, label='Monthly Return')
-    plt.legend(loc='best')
+    #plt.legend(loc='best')
     return np.array(p_ret), p_sum
+
+
 
 
 def risk_parity(freq=12):
@@ -77,6 +80,52 @@ def risk_parity(freq=12):
     return weights
 
 
+
+
+
+def exp_weight(alpha,n):
+    exp_w=np.array([(1-alpha)*alpha**i for i in range(n,0,-1)])
+    exp_w=exp_w/sum(exp_w)
+    return exp_w
+
+
+
+
+def ew_mean(ret,alpha):
+    exp_w=exp_weight(alpha,len(ret))
+    ex_ret=sum(ret*exp_w)
+    return ex_ret
+
+
+
+
+
+def ew_mean_multiple(m_ret,alpha):
+    m_ret=np.array(m_ret)
+    exp_w=exp_weight(alpha,m_ret.shape[0])
+    exp_ret=[]
+    for i in range(m_ret.shape[1]):
+        exp_ret.append(sum(m_ret[:,i]*exp_w))
+    return exp_ret
+ 
+
+   
+    
+def ew_cov(m_ret,alpha):
+    m_ret=np.array(m_ret)
+    exp_w=exp_weight(alpha,m_ret.shape[0])    
+    m=m_ret.shape[1]
+    cov=np.zeros([m,m])
+    for i in range(m):
+        for j in range(m):
+            exp_ret_i=ew_mean(m_ret[:,i],alpha)
+            exp_ret_j=ew_mean(m_ret[:,j],alpha)
+            cov[i,j]=sum((m_ret[:,i]-exp_ret_i)*(m_ret[:,j]-exp_ret_j)*exp_w)
+            cov[j,i]=cov[i,j]
+    return cov
+
+
+    
 
 def risk_parity2(alpha=0.8):
     weights=[]
@@ -95,7 +144,6 @@ def risk_parity2(alpha=0.8):
     weights=np.array(weights)
     weights = weights[12:,:]
     return weights
-    
     
     
 
@@ -161,7 +209,42 @@ def mv_portfolio(data,legend,lbd):
     p_ret =  np.log(p_sum)-np.log(p_sum).shift(1)
     p_ret=p_ret[1:]    
     plt.plot(pd.to_datetime(data.index[11:]), p_sum, label=legend)
-    plt.legend(loc='best')
+    plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
+    #plt.legend(loc='best')
+    return p_sum, np.array(weights)
+
+
+
+
+def mv_portfolio_ew(data,legend,lbd,alpha):  
+    weights=[]
+    ##the first alpha and cov
+    ret=ew_mean_multiple(data.iloc[0:12,:],alpha)
+    cov=ew_cov(data.iloc[0:12,:],alpha) 
+    w0=model0(ret,cov,lbd)
+    w0=w0.reshape(len(w0))
+    weights.append(w0)
+    p0 = 1 * w0/np.sum(w0) # initial dollar value 
+    p_sum = [1]
+    for i in range(12,len(data)):
+        ## forecasted asset return: simply take current period's return
+        ret=ew_mean_multiple(data.iloc[i-11:i+1,:],alpha)
+        ## estimated asset covariance: simply use previous 12 months' covariance
+        cov=ew_cov(data.iloc[i-11:i+1,:],alpha)
+        w1=model1(ret,cov,lbd,p0)
+        w1=w1.reshape(len(w1))
+        weights.append(w1)
+        p1 = p0 * np.exp(data.ix[i] - holding_costs)
+        diff = np.abs(p1 - w1 * np.sum(p1))
+        p1 = w1 * (np.sum(p1) - np.dot(diff, trading_costs))
+        p_sum.append(np.sum(p1))
+        p0=p1
+    p_sum=pd.Series(p_sum)
+    p_ret =  np.log(p_sum)-np.log(p_sum).shift(1)
+    p_ret=p_ret[1:]    
+    plt.plot(pd.to_datetime(data.index[11:]), p_sum, label=legend)
+    plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
+    #plt.legend(loc='best')
     return p_sum, np.array(weights)
     
 #==============================================================================
@@ -174,32 +257,3 @@ trading_costs = np.array([0.0005, 0.0010, 0.0015, 0.0000, 0.0030, 0.0040, 0.0100
 holding_costs = np.array([0.0000, 0.0010, 0.0005, 0.0000, 0.0015, 0.0025, 0.0000,0.0000])/12
 
 
-plt.figure(figsize=(10,5))                         
-# UCRP
-p_ucrp, p_ucrp_sum = portfolio(data.iloc[12:,:],[[0.25,0.25,0.13,0.02,0.025,0.07,0.1,0.1]]*len(data),'UCRP')
-# 60/40
-p_6040, p_6040_sum = portfolio(data.iloc[12:,:],[[0.6/2, 0.6/2, 0.4/3, 0.4/3, 0.4/3, 0, 0, 0]]*len(data),'60/40')
-# Equally Weighted 
-p_eq, p_eq_sum = portfolio(data.iloc[12:,:],[[1/8]*8]*len(data),'equally weighted')
-# risk parity
-p_rp, p_rp_sum = portfolio(data.iloc[12:,:],risk_parity2(0.94),'ewm risk parity alpha=0.94')
-plt.title('Basic Portfolios')
-plt.ylabel('Return')
-
-fig=plt.figure()
-for i in range(data.shape[1]):
-    plt.plot(np.cumprod(1+data.iloc[:,i]))
-plt.legend(data.columns,fontsize=5,loc=0)
-plt.savefig('asset return',dpi=200)
-
-
-#mean variance
-p1,weights1=mv_portfolio(data,'mean_var 100',100)
-p2,weights2=mv_portfolio(data,'mean_var 10',10)
-#plot weights
-for i in range(data.shape[1]):
-    fig=plt.figure()
-    plt.plot(weights1[:,i])
-    plt.legend([data.columns[i]])
-    plt.show()
-    fig.clear()
