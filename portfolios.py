@@ -24,7 +24,7 @@ data.set_index(data['Date'],inplace=True)
 del data['Date']
 
 
-def summary_stats(p_ret, p_cumret, b_ret, rf_ret):
+def summary_stats(p_ret, p_cumret, b_ret):
     # max drawdown
     x = p_cumret
     i = np.argmax(np.maximum.accumulate(x) - x) # end of the period
@@ -34,7 +34,7 @@ def summary_stats(p_ret, p_cumret, b_ret, rf_ret):
     max_dd = x[j] - x[i]
     max_dd_period = i-j
     # SR
-    SR = np.mean(p_ret - rf_ret)/np.std(p_ret) * np.sqrt(12)
+    #SR = np.mean(p_ret - rf_ret)/np.std(p_ret) * np.sqrt(12)
     # IR
     IR = np.mean(p_ret - b_ret)/np.std(p_ret - b_ret) * np.sqrt(12)
     # cumulative return
@@ -42,8 +42,8 @@ def summary_stats(p_ret, p_cumret, b_ret, rf_ret):
     # mean, std of return
     mean_ret = np.mean(p_ret)
     std_ret = np.std(p_ret)
-    output = pd.DataFrame([mean_ret, std_ret, total_ret, SR, IR, max_dd, max_dd_period]).T
-    output.columns = ['mean_ret', 'std_ret', 'total_ret', 'SR','IR', 'max_dd', 'max_dd_period']
+    output = pd.DataFrame([mean_ret, std_ret, total_ret, IR, max_dd, max_dd_period]).T
+    output.columns = ['mean_ret', 'std_ret', 'total_ret', 'IR', 'max_dd', 'max_dd_period']
     return output
 
 ###inputs: weights is a matrix, row: end of period date, col: asset weight
@@ -211,7 +211,7 @@ def mv_portfolio(data,legend,lbd):
     plt.plot(pd.to_datetime(data.index[11:]), p_sum, label=legend)
     plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
     #plt.legend(loc='best')
-    return p_sum, np.array(weights)
+    return p_ret, p_sum, np.array(weights)
 
 
 
@@ -245,7 +245,7 @@ def mv_portfolio_ew(data,legend,lbd,alpha):
     plt.plot(pd.to_datetime(data.index[11:]), p_sum, label=legend)
     plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
     #plt.legend(loc='best')
-    return p_sum, np.array(weights)
+    return p_ret, p_sum, np.array(weights)
     
 #==============================================================================
 # TRADING/HOLDING COSTS
