@@ -84,7 +84,7 @@ def risk_parity(freq=12):
 
 
 def exp_weight(alpha,n):
-    exp_w=np.array([(1-alpha)*alpha**i for i in range(n,0,-1)])
+    exp_w=np.array([(1-alpha)**i*alpha for i in range(n,0,-1)])
     exp_w=exp_w/sum(exp_w)
     return exp_w
 
