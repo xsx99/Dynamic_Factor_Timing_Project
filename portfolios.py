@@ -15,13 +15,7 @@ from cvxpy import *
 imp.reload(DC)
 plt.style.use('ggplot')
 
-# notice that PE seems very out of place in terms of return
-data = pd.read_csv('./data/asset_return.csv')
-#data.drop(['PE'], axis=1, inplace=True)
-col = data.columns
-data['Date']=pd.to_datetime(data['Date'])
-data.set_index(data['Date'],inplace=True)
-del data['Date']
+
 
 
 def summary_stats(p_ret, p_cumret, b_ret,rf_ret):
@@ -217,10 +211,12 @@ def mv_portfolio(data,legend,lbd):
     p_sum=pd.Series(p_sum)
     p_ret =  np.log(p_sum)-np.log(p_sum).shift(1)
     p_ret=p_ret[1:]    
+
     #plt.plot(pd.to_datetime(data.index[11:]), p_sum, label=legend)
     #plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
     ##plt.legend(loc='best')
     return p_ret, p_sum, np.array(weights),np.mean(cov_lst)
+
 
 
 
@@ -268,4 +264,105 @@ def mv_portfolio_ew(data,legend,lbd,alpha):
 trading_costs = np.array([0.0005, 0.0010, 0.0015, 0.0000, 0.0030, 0.0040, 0.0100,0.0100])
 holding_costs = np.array([0.0000, 0.0010, 0.0005, 0.0000, 0.0015, 0.0025, 0.0000,0.0000])/12
 
+
+
+    plt.legend(loc='best')
+    return p_sum, np.array(weights)
+
+
+
+
+
+if __name__ == "__main__":
+    
+    # notice that PE seems very out of place in terms of return
+    data = pd.read_csv('./data/asset_return.csv')
+    #data.drop(['PE'], axis=1, inplace=True)
+    col = data.columns
+    data['Date']=pd.to_datetime(data['Date'])
+    data.set_index(data['Date'],inplace=True)
+    del data['Date']
+    
+    
+    
+            
+    #==============================================================================
+    # TRADING/HOLDING COSTS
+    #==============================================================================
+    # please refer to page 5 of the project description
+    # the following are estimates 
+    
+    trading_costs = np.array([0.0005, 0.0010, 0.0015, 0.0000, 0.0030, 0.0040, 0.0100,0.0100])
+    holding_costs = np.array([0.0000, 0.0010, 0.0005, 0.0000, 0.0015, 0.0025, 0.0000,0.0000])/12
+    
+    
+    plt.figure(figsize=(10,5))                         
+    # UCRP
+    p_ucrp, p_ucrp_sum = portfolio(data.iloc[12:,:],[[0.25,0.25,0.13,0.02,0.025,0.07,0.1,0.1]]*len(data),'UCRP')
+    # 60/40
+    p_6040, p_6040_sum = portfolio(data.iloc[12:,:],[[0.6/2, 0.6/2, 0.4/3, 0.4/3, 0.4/3, 0, 0, 0]]*len(data),'60/40')
+    # Equally Weighted 
+    p_eq, p_eq_sum = portfolio(data.iloc[12:,:],[[1/8]*8]*len(data),'equally weighted')
+    # risk parity
+    p_rp, p_rp_sum = portfolio(data.iloc[12:,:],risk_parity2(0.94),'ewm risk parity alpha=0.94')
+    plt.title('Basic Portfolios')
+    plt.ylabel('Return')
+    
+    
+    
+#<<<<<<< HEAD   Below may be a new version. 
+#=======
+##==============================================================================
+## TRADING/HOLDING COSTS
+##==============================================================================
+## please refer to page 5 of the project description
+## the following are estimates 
+
+#trading_costs = np.array([0.0005, 0.0010, 0.0015, 0.0000, 0.0030, 0.0040, 0.0100,0.0100])
+#holding_costs = np.array([0.0000, 0.0010, 0.0005, 0.0000, 0.0015, 0.0025, 0.0000,0.0000])/12
+
+
+#plt.figure(figsize=(10,5))                         
+## UCRP
+#p_ucrp, p_ucrp_sum = portfolio(data.iloc[12:,:],[[0.25,0.25,0.13,0.02,0.025,0.07,0.1,0.1]]*len(data),'UCRP')
+## 60/40
+#p_6040, p_6040_sum = portfolio(data.iloc[12:,:],[[0.6/2, 0.6/2, 0.4/3, 0.4/3, 0.4/3, 0, 0, 0]]*len(data),'60/40')
+## Equally Weighted 
+#p_eq, p_eq_sum = portfolio(data.iloc[12:,:],[[1/8]*8]*len(data),'equally weighted')
+## risk parity
+#p_rp, p_rp_sum = portfolio(data.iloc[12:,:],risk_parity2(0.94),'ewm risk parity alpha=0.94')
+#plt.title('Basic Portfolios')
+#plt.ylabel('Return')
+    
+    fig=plt.figure()
+    for i in range(data.shape[1]):
+        plt.plot(np.cumprod(1+data.iloc[:,i]))
+    plt.legend(data.columns,fontsize=5,loc=0)
+    plt.savefig('asset return',dpi=200)
+    
+    
+    #mean variance
+    p1,weights1=mv_portfolio(data,'mean_var 100',100)
+    p2,weights2=mv_portfolio(data,'mean_var 10',10)
+    #plot weights
+    for i in range(data.shape[1]):
+        fig=plt.figure()
+        for i in range(data.shape[1]):
+            plt.plot(np.cumprod(1+data.iloc[:,i]))
+        plt.legend(data.columns,fontsize=5,loc=0)
+        plt.savefig('asset return',dpi=200)
+        
+        
+        #mean variance
+        p1,weights1=mv_portfolio(data,'mean_var 1000',1000)
+        p2,weights2=mv_portfolio(data,'mean_var 10',10)
+        #plot weights
+        for i in range(data.shape[1]):
+            fig=plt.figure()
+            plt.plot(weights1[:,i])
+            plt.legend([data.columns[i]])
+            plt.show()
+            fig.clear()
+
+portfolio(data.iloc[12:,:],[[1/8]*8]*len(data),'equally weighted')
 
