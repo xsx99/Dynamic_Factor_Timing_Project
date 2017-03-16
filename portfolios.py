@@ -24,17 +24,17 @@ data.set_index(data['Date'],inplace=True)
 del data['Date']
 
 
-def summary_stats(p_ret, p_cumret, b_ret):
+def summary_stats(p_ret, p_cumret, b_ret,rf_ret):
     # max drawdown
     x = p_cumret
     i = np.argmax(np.maximum.accumulate(x) - x) # end of the period
     j = np.argmax(x[:i]) # start of period
-    plt.plot(x)
-    plt.plot([i, j], [x[i], x[j]], 'o', color='Red', markersize=10)
-    max_dd = x[j] - x[i]
+    #plt.plot(x)
+    #plt.plot([i, j], [x[i], x[j]], 'o', color='Red', markersize=10)
+    max_dd = x[i] - x[j]
     max_dd_period = i-j
     # SR
-    #SR = np.mean(p_ret - rf_ret)/np.std(p_ret) * np.sqrt(12)
+    SR = np.mean(p_ret - rf_ret)/np.std(p_ret - rf_ret) * np.sqrt(12)
     # IR
     IR = np.mean(p_ret - b_ret)/np.std(p_ret - b_ret) * np.sqrt(12)
     # cumulative return
@@ -42,8 +42,8 @@ def summary_stats(p_ret, p_cumret, b_ret):
     # mean, std of return
     mean_ret = np.mean(p_ret)
     std_ret = np.std(p_ret)
-    output = pd.DataFrame([mean_ret, std_ret, total_ret, IR, max_dd, max_dd_period]).T
-    output.columns = ['mean_ret', 'std_ret', 'total_ret', 'IR', 'max_dd', 'max_dd_period']
+    output = pd.DataFrame([mean_ret, std_ret, total_ret, IR,SR, max_dd, max_dd_period]).T
+    output.columns = ['mean_ret', 'std_ret', 'total_ret', 'IR','SR', 'max_dd', 'max_dd_period']
     return output
 
 ###inputs: weights is a matrix, row: end of period date, col: asset weight
@@ -84,7 +84,7 @@ def risk_parity(freq=12):
 
 
 def exp_weight(alpha,n):
-    exp_w=np.array([(1-alpha)**i*alpha for i in range(n,0,-1)])
+    exp_w=np.array([(1-alpha)*alpha**i for i in range(n,0,-1)])
     exp_w=exp_w/sum(exp_w)
     return exp_w
 
@@ -93,7 +93,7 @@ def exp_weight(alpha,n):
 
 def ew_mean(ret,alpha):
     exp_w=exp_weight(alpha,len(ret))
-    ex_ret=sum(ret*exp_w)
+    ex_ret=np.sum(np.multiply(ret,exp_w))
     return ex_ret
 
 
@@ -105,7 +105,7 @@ def ew_mean_multiple(m_ret,alpha):
     exp_w=exp_weight(alpha,m_ret.shape[0])
     exp_ret=[]
     for i in range(m_ret.shape[1]):
-        exp_ret.append(sum(m_ret[:,i]*exp_w))
+        exp_ret.append(np.sum(np.multiply(m_ret[:,i],exp_w)))
     return exp_ret
  
 
@@ -117,10 +117,10 @@ def ew_cov(m_ret,alpha):
     m=m_ret.shape[1]
     cov=np.zeros([m,m])
     for i in range(m):
-        for j in range(m):
+        for j in range(i,m):
             exp_ret_i=ew_mean(m_ret[:,i],alpha)
             exp_ret_j=ew_mean(m_ret[:,j],alpha)
-            cov[i,j]=sum((m_ret[:,i]-exp_ret_i)*(m_ret[:,j]-exp_ret_j)*exp_w)
+            cov[i,j]=np.sum(np.multiply(np.multiply((m_ret[:,i]-exp_ret_i),(m_ret[:,j]-exp_ret_j)),exp_w))
             cov[j,i]=cov[i,j]
     return cov
 
@@ -179,13 +179,21 @@ def model1(r,c,lbd,p):
     
     
     
-  
+def model2(r,c,lbd,p):
+    r=np.array(r)
+    n=len(r)
+    x=Variable(n)
+    p=Problem(Maximize(r*x-lbd*(quad_form(x, c))-trading_costs*np.power(abs(np.sum(p)*x-p),2.5)-holding_costs*(np.sum(p)*x)),[x>=0,sum_entries(x)==1])
+    p.solve()
+    w=x.value
+    return np.array(w)  
     
 
 def mv_portfolio(data,legend,lbd):  
     weights=[]
+    cov_lst=[]
     ##the first alpha and cov
-    alpha=data.iloc[11,:]
+    alpha=np.mean(data.iloc[0:12,:],axis=0)
     cov=np.cov(data.iloc[0:12,:].T) 
     w0=model0(alpha,cov,lbd)
     w0=w0.reshape(len(w0))
@@ -194,7 +202,7 @@ def mv_portfolio(data,legend,lbd):
     p_sum = [1]
     for i in range(12,len(data)):
         ## forecasted asset return: simply take current period's return
-        alpha=data.iloc[i,:]
+        alpha=np.mean(data.iloc[i-11:i+1,:],axis=0)
         ## estimated asset covariance: simply use previous 12 months' covariance
         cov=np.cov(data.iloc[i-11:i+1,:].T)
         w1=model1(alpha,cov,lbd,p0)
@@ -205,19 +213,21 @@ def mv_portfolio(data,legend,lbd):
         p1 = w1 * (np.sum(p1) - np.dot(diff, trading_costs))
         p_sum.append(np.sum(p1))
         p0=p1
+        cov_lst.append(np.dot(np.dot(w1.T,cov),w1))
     p_sum=pd.Series(p_sum)
     p_ret =  np.log(p_sum)-np.log(p_sum).shift(1)
     p_ret=p_ret[1:]    
-    plt.plot(pd.to_datetime(data.index[11:]), p_sum, label=legend)
-    plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
-    #plt.legend(loc='best')
-    return p_ret, p_sum, np.array(weights)
+    #plt.plot(pd.to_datetime(data.index[11:]), p_sum, label=legend)
+    #plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
+    ##plt.legend(loc='best')
+    return p_ret, p_sum, np.array(weights),np.mean(cov_lst)
 
 
 
 
 def mv_portfolio_ew(data,legend,lbd,alpha):  
     weights=[]
+    cov_lst=[]
     ##the first alpha and cov
     ret=ew_mean_multiple(data.iloc[0:12,:],alpha)
     cov=ew_cov(data.iloc[0:12,:],alpha) 
@@ -231,7 +241,7 @@ def mv_portfolio_ew(data,legend,lbd,alpha):
         ret=ew_mean_multiple(data.iloc[i-11:i+1,:],alpha)
         ## estimated asset covariance: simply use previous 12 months' covariance
         cov=ew_cov(data.iloc[i-11:i+1,:],alpha)
-        w1=model1(ret,cov,lbd,p0)
+        w1=model2(ret,cov,lbd,p0)
         w1=w1.reshape(len(w1))
         weights.append(w1)
         p1 = p0 * np.exp(data.ix[i] - holding_costs)
@@ -239,13 +249,15 @@ def mv_portfolio_ew(data,legend,lbd,alpha):
         p1 = w1 * (np.sum(p1) - np.dot(diff, trading_costs))
         p_sum.append(np.sum(p1))
         p0=p1
+        cov_lst.append(np.dot(np.dot(w1.T,cov),w1))
     p_sum=pd.Series(p_sum)
     p_ret =  np.log(p_sum)-np.log(p_sum).shift(1)
     p_ret=p_ret[1:]    
-    plt.plot(pd.to_datetime(data.index[11:]), p_sum, label=legend)
-    plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
+    #plt.plot(pd.to_datetime(data.index[11:]), p_sum, label=legend)
+    #plt.legend(bbox_to_anchor=(0.5,-0.05),loc=0)
     #plt.legend(loc='best')
-    return p_ret, p_sum, np.array(weights)
+    
+    return p_ret, p_sum, np.array(weights),np.mean(cov_lst)
     
 #==============================================================================
 # TRADING/HOLDING COSTS
